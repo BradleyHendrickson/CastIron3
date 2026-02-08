@@ -14,7 +14,6 @@ import { User } from '@supabase/supabase-js';
 import { colors } from '../constants/theme';
 import {
   getBookmarkedPlaces,
-  getLikedPlaces,
   removeBookmark,
   type PlaceSummary,
 } from '../lib/restaurants';
@@ -28,8 +27,6 @@ type Props = {
   isVisible?: boolean;
   onSignOut: () => void;
 };
-
-type Tab = 'liked' | 'bookmarked';
 
 function getDisplayName(user: User): string {
   return (
@@ -54,9 +51,16 @@ function PlaceItem({
         onPress={() => Linking.openURL(getMapsUrl(place.id))}
         activeOpacity={0.7}
       >
-        <Text style={styles.placeName} numberOfLines={1}>
-          {place.name}
-        </Text>
+        <View style={styles.placeInfo}>
+          <Text style={styles.placeName} numberOfLines={1}>
+            {place.name}
+          </Text>
+          {(place.city || place.state) && (
+            <Text style={styles.placeLocation} numberOfLines={1}>
+              {[place.city, place.state].filter(Boolean).join(', ')}
+            </Text>
+          )}
+        </View>
         <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textDim} />
       </TouchableOpacity>
       {onRemove && (
@@ -75,8 +79,6 @@ function PlaceItem({
 export default function ProfileScreen({ user, isVisible = true, onSignOut }: Props) {
   const displayName = getDisplayName(user);
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<Tab>('liked');
-  const [liked, setLiked] = useState<PlaceSummary[]>([]);
   const [bookmarked, setBookmarked] = useState<PlaceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,14 +86,9 @@ export default function ProfileScreen({ user, isVisible = true, onSignOut }: Pro
   const loadPlaces = useCallback(async () => {
     setLoading(true);
     try {
-      const [likedData, bookmarkedData] = await Promise.all([
-        getLikedPlaces(),
-        getBookmarkedPlaces(),
-      ]);
-      setLiked(likedData);
+      const bookmarkedData = await getBookmarkedPlaces();
       setBookmarked(bookmarkedData);
     } catch {
-      setLiked([]);
       setBookmarked([]);
     } finally {
       setLoading(false);
@@ -113,8 +110,6 @@ export default function ProfileScreen({ user, isVisible = true, onSignOut }: Pro
     setBookmarked((prev) => prev.filter((p) => p.id !== placeId));
   }, []);
 
-  const places = activeTab === 'liked' ? liked : bookmarked;
-
   return (
     <ScrollView
       style={styles.container}
@@ -135,50 +130,24 @@ export default function ProfileScreen({ user, isVisible = true, onSignOut }: Pro
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'liked' && styles.tabActive]}
-          onPress={() => setActiveTab('liked')}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons
-            name="heart"
-            size={18}
-            color={activeTab === 'liked' ? '#e74c3c' : colors.textDim}
-          />
-          <Text style={[styles.tabText, activeTab === 'liked' && styles.tabTextActive]}>
-            Liked {liked.length > 0 ? `(${liked.length})` : ''}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'bookmarked' && styles.tabActive]}
-          onPress={() => setActiveTab('bookmarked')}
-          activeOpacity={0.7}
-        >
-          <MaterialCommunityIcons
-            name="bookmark"
-            size={18}
-            color={activeTab === 'bookmarked' ? colors.accent : colors.textDim}
-          />
-          <Text style={[styles.tabText, activeTab === 'bookmarked' && styles.tabTextActive]}>
-            Bookmarked {bookmarked.length > 0 ? `(${bookmarked.length})` : ''}
-          </Text>
-        </TouchableOpacity>
+      <View style={styles.sectionHeader}>
+        <MaterialCommunityIcons name="bookmark" size={20} color={colors.accent} />
+        <Text style={styles.sectionTitle}>
+          Bookmarked {bookmarked.length > 0 ? `(${bookmarked.length})` : ''}
+        </Text>
       </View>
 
       <View style={styles.tabContent}>
         {loading ? (
           <Text style={styles.sectionEmpty}>Loading...</Text>
-        ) : places.length === 0 ? (
-          <Text style={styles.sectionEmpty}>
-            {activeTab === 'liked' ? 'No liked restaurants yet' : 'No bookmarked restaurants yet'}
-          </Text>
+        ) : bookmarked.length === 0 ? (
+          <Text style={styles.sectionEmpty}>No bookmarked restaurants yet</Text>
         ) : (
-          places.map((place) => (
+          bookmarked.map((place) => (
             <PlaceItem
               key={place.id}
               place={place}
-              onRemove={activeTab === 'bookmarked' ? handleRemoveBookmark : undefined}
+              onRemove={handleRemoveBookmark}
             />
           ))
         )}
@@ -234,36 +203,15 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontSize: 13,
   },
-  tabBar: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: 12,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
-    borderRadius: 10,
+    marginBottom: 16,
   },
-  tabActive: {
-    backgroundColor: colors.surface,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 15,
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    color: colors.textDim,
-  },
-  tabTextActive: {
     color: colors.text,
   },
   tabContent: {
@@ -289,6 +237,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  placeInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  placeLocation: {
+    fontSize: 13,
+    color: colors.textDim,
+    marginTop: 2,
+  },
   removeButton: {
     paddingLeft: 12,
     paddingVertical: 4,
@@ -296,7 +253,6 @@ const styles = StyleSheet.create({
   placeName: {
     fontSize: 16,
     color: colors.text,
-    flex: 1,
-    marginRight: 12,
+    fontWeight: '500',
   },
 });

@@ -59,16 +59,16 @@ function ActionBar({
       onUnlike();
     } else {
       onLike();
-      Animated.sequence([
+        Animated.sequence([
         Animated.timing(likeScaleAnim, {
           toValue: 1.4,
-          duration: 120,
+          duration: 60,
           useNativeDriver: true,
         }),
         Animated.spring(likeScaleAnim, {
           toValue: 1.15,
-          friction: 3,
-          tension: 200,
+          friction: 5,
+          tension: 320,
           useNativeDriver: true,
         }),
       ]).start();
@@ -369,7 +369,8 @@ export default function FeedScreen({
         pagingEnabled
         snapToInterval={height}
         snapToAlignment="start"
-        decelerationRate="fast"
+        decelerationRate={0.9}
+        disableIntervalMomentum
         showsVerticalScrollIndicator={false}
         bounces={false}
       />

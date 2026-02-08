@@ -82,7 +82,7 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
     lightboxFade.setValue(0);
     Animated.timing(lightboxFade, {
       toValue: 1,
-      duration: 150,
+      duration: 80,
       useNativeDriver: true,
     }).start();
   }, [lightboxFade]);
@@ -90,7 +90,7 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
   const closeLightbox = useCallback(() => {
     Animated.timing(lightboxFade, {
       toValue: 0,
-      duration: 100,
+      duration: 50,
       useNativeDriver: true,
     }).start(() => {
       setLightboxIndex(null);
@@ -193,6 +193,7 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
               data={photos}
               horizontal
               pagingEnabled
+              decelerationRate={0.9}
               showsHorizontalScrollIndicator={false}
               keyExtractor={(id) => id}
               initialScrollIndex={Math.min(lightboxIndex, photos.length - 1)}

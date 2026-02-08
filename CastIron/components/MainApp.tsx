@@ -56,6 +56,7 @@ export default function MainApp({ session, onSignOut }: Props) {
       <ScrollView
         horizontal
         pagingEnabled
+        decelerationRate={0.9}
         showsHorizontalScrollIndicator={false}
         bounces={false}
         onScrollEndDrag={handleScrollEnd}

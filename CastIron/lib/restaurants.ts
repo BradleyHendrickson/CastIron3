@@ -120,7 +120,23 @@ export async function getBookmarkedPlaceIds(): Promise<Set<string>> {
   return new Set((data ?? []).map((r) => r.place_id));
 }
 
-export type PlaceSummary = { id: string; name: string };
+export type PlaceSummary = { id: string; name: string; city?: string; state?: string };
+
+/** Parse city and state from a formatted address like "123 Main St, City, ST 12345, USA". */
+function parseCityState(address: string): { city?: string; state?: string } {
+  if (!address?.trim()) return {};
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 3) {
+    const city = parts[1];
+    const statePart = parts[2]; // e.g. "CA 94043" or "TX"
+    const state = statePart?.split(/\s+/)[0] ?? undefined;
+    return { city, state };
+  }
+  if (parts.length === 2) {
+    return { city: parts[0], state: parts[1] };
+  }
+  return {};
+}
 
 /** Returns place IDs the user has liked. Matches: SELECT place_id FROM restaurant_interactions WHERE user_id=? AND action='like' GROUP BY place_id */
 export async function getLikedPlaceIds(): Promise<string[]> {
@@ -145,7 +161,8 @@ export async function getLikedPlaces(): Promise<PlaceSummary[]> {
     ids.map(async (id) => {
       try {
         const d = await fetchPlaceDetails(id);
-        return { id: d.id, name: d.name };
+        const { city, state } = parseCityState(d.address);
+        return { id: d.id, name: d.name, city, state };
       } catch {
         return { id, name: 'Unknown' };
       }
@@ -161,7 +178,8 @@ export async function getBookmarkedPlaces(): Promise<PlaceSummary[]> {
     ids.map(async (id) => {
       try {
         const d = await fetchPlaceDetails(id);
-        return { id: d.id, name: d.name };
+        const { city, state } = parseCityState(d.address);
+        return { id: d.id, name: d.name, city, state };
       } catch {
         return { id, name: 'Unknown' };
       }
