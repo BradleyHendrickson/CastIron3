@@ -56,6 +56,7 @@ function ActionBar({
   liked,
   bookmarked,
   likeScaleAnim,
+  bookmarkScaleAnim,
   profileInitial,
 }: {
   onLike: () => void;
@@ -67,6 +68,7 @@ function ActionBar({
   liked: boolean;
   bookmarked: boolean;
   likeScaleAnim: Animated.Value;
+  bookmarkScaleAnim: Animated.Value;
   profileInitial: string;
 }) {
   const insets = useSafeAreaInsets();
@@ -84,13 +86,34 @@ function ActionBar({
         }),
         Animated.spring(likeScaleAnim, {
           toValue: 1.15,
-          friction: 5,
-          tension: 320,
+          friction: 12,
+          tension: 320,//320
           useNativeDriver: true,
         }),
       ]).start();
     }
   }, [liked, onLike, onUnlike, likeScaleAnim]);
+
+  const handleToggleBookmark = useCallback(() => {
+    if (bookmarked) {
+      onUnbookmark();
+    } else {
+      onBookmark();
+      Animated.sequence([
+        Animated.timing(bookmarkScaleAnim, {
+          toValue: 1.4,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+        Animated.spring(bookmarkScaleAnim, {
+          toValue: 1.15,
+          friction: 12,
+          tension: 320,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [bookmarked, onBookmark, onUnbookmark, bookmarkScaleAnim]);
 
   return (
     <View style={[styles.actionBar, { bottom: insets.bottom + 56 }]}>
@@ -99,16 +122,18 @@ function ActionBar({
           <MaterialCommunityIcons
             name={liked ? 'heart' : 'heart-outline'}
             size={ICON_SIZE}
-            color={liked ? '#e74c3c' : colors.textMuted}
+            color={liked ? '#e74c3c' : colors.text}
           />
         </Animated.View>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.actionButton} onPress={bookmarked ? onUnbookmark : onBookmark}>
-        <MaterialCommunityIcons
-          name={bookmarked ? 'bookmark' : 'bookmark-outline'}
-          size={ICON_SIZE}
-          color={bookmarked ? colors.accent : colors.textMuted}
-        />
+      <TouchableOpacity style={styles.actionButton} onPress={handleToggleBookmark}>
+        <Animated.View style={{ transform: [{ scale: bookmarkScaleAnim }] }}>
+          <MaterialCommunityIcons
+            name={bookmarked ? 'bookmark' : 'bookmark-outline'}
+            size={ICON_SIZE}
+            color={bookmarked ? colors.accent : colors.text}
+          />
+        </Animated.View>
       </TouchableOpacity>
       <TouchableOpacity style={styles.actionButton} onPress={onShare}>
         <MaterialCommunityIcons
@@ -150,6 +175,7 @@ function RestaurantCard({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const likeScaleAnim = useRef(new Animated.Value(1)).current;
+  const bookmarkScaleAnim = useRef(new Animated.Value(1)).current;
   const cuisine = restaurant.cuisine?.replace(/_/g, ' ') ?? 'Restaurant';
   const photoId = restaurant.photos?.[0];
 
@@ -188,6 +214,9 @@ function RestaurantCard({
           {restaurant.distanceMeters != null && (
             <Text style={styles.distance}>{formatDistance(restaurant.distanceMeters)}</Text>
           )}
+          <Text style={styles.score}>
+            Score: {restaurant.score != null ? restaurant.score : '—'}
+          </Text>
         </View>
       </View>
       <ActionBar
@@ -200,6 +229,7 @@ function RestaurantCard({
         liked={liked}
         bookmarked={bookmarked}
         likeScaleAnim={likeScaleAnim}
+        bookmarkScaleAnim={bookmarkScaleAnim}
         profileInitial={profileInitial}
       />
     </View>
@@ -422,7 +452,7 @@ export default function FeedScreen({
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.retryText} onPress={loadRestaurants}>
+        <Text style={styles.retryText} onPress={() => loadRestaurants()}>
           Retry
         </Text>
       </View>
@@ -451,7 +481,7 @@ export default function FeedScreen({
         pagingEnabled
         snapToInterval={height}
         snapToAlignment="start"
-        decelerationRate={0.9}
+        decelerationRate={0.95}
         disableIntervalMomentum
         showsVerticalScrollIndicator={false}
         bounces={false}
@@ -562,6 +592,11 @@ const styles = StyleSheet.create({
   distance: {
     fontSize: 16,
     color: 'rgba(255,255,255,0.85)',
+  },
+  score: {
+    fontSize: 13,
+    color: colors.accent,
+    marginTop: 2,
   },
   actionBar: {
     position: 'absolute',

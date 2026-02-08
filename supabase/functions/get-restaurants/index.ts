@@ -164,14 +164,24 @@ Deno.serve(async (req) => {
           p.types?.find((t: string) => t.includes("restaurant"))?.replace(/_/g, " ") ??
           "Restaurant";
 
-        let score = rating * 20;
+        const base = rating * 20;
+        let interactionBonus = 0;
+        let timeBonus = 0;
         if (interaction) {
-          if (interaction.action === "like") score += 50;
-          else if (interaction.action === "unlike") score -= 30;
+          if (interaction.action === "like") interactionBonus = 50;
+          else if (interaction.action === "unlike") interactionBonus = -30;
           if (interaction.action !== "unlike") {
-            score += Math.min(interaction.time_spent_ms / 1000, 10);
+            timeBonus = Math.min(interaction.time_spent_ms / 1000, 10);
           }
         }
+        const score = base + interactionBonus + timeBonus;
+
+        const scoreBreakdown = {
+          base: Math.round(base),
+          interaction: interactionBonus,
+          timeSpent: Math.round(timeBonus * 10) / 10,
+          interactionType: interaction?.action ?? null,
+        };
 
         const photos: string[] = [];
         for (const photo of p.photos ?? []) {
@@ -203,6 +213,8 @@ Deno.serve(async (req) => {
           distanceMeters,
           priceLevel: priceLevel ?? undefined,
           openNow: openNow ?? undefined,
+          score: Math.round(score),
+          scoreBreakdown,
           _score: score,
         };
       })

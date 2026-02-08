@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { User } from '@supabase/supabase-js';
 import { colors } from '../constants/theme';
+import { getProfile } from '../lib/profile';
 import {
   getBookmarkedPlaces,
   removeBookmark,
@@ -82,18 +83,23 @@ export default function ProfileScreen({ user, isVisible = true, onSignOut }: Pro
   const [bookmarked, setBookmarked] = useState<PlaceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isTester, setIsTester] = useState(false);
 
   const loadPlaces = useCallback(async () => {
     setLoading(true);
     try {
-      const bookmarkedData = await getBookmarkedPlaces();
+      const [bookmarkedData, profile] = await Promise.all([
+        getBookmarkedPlaces(),
+        getProfile(user.id),
+      ]);
       setBookmarked(bookmarkedData);
+      setIsTester(profile?.is_tester ?? false);
     } catch {
       setBookmarked([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user.id]);
 
   useEffect(() => {
     if (isVisible) loadPlaces();
@@ -124,6 +130,12 @@ export default function ProfileScreen({ user, isVisible = true, onSignOut }: Pro
           <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
         </View>
         <Text style={styles.name}>{displayName}</Text>
+        {isTester && (
+          <View style={styles.testerBadge}>
+            <MaterialCommunityIcons name="shield" size={14} color="#fff" />
+            <Text style={styles.testerBadgeText}>Tester</Text>
+          </View>
+        )}
         {user.email && <Text style={styles.email}>{user.email}</Text>}
         <TouchableOpacity style={styles.signOutButton} onPress={onSignOut}>
           <Text style={styles.signOutText}>Sign out</Text>
@@ -189,6 +201,21 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
+  },
+  testerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#22c55e',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginBottom: 8,
+  },
+  testerBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
   email: {
     fontSize: 16,

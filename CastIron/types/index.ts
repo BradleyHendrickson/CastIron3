@@ -9,4 +9,11 @@ export type Restaurant = {
   distanceMeters?: number;
   priceLevel?: string;
   openNow?: boolean;
+  score?: number;
+  scoreBreakdown?: {
+    base: number;
+    interaction: number;
+    timeSpent: number;
+    interactionType: 'like' | 'skip' | 'unlike' | null;
+  };
 };

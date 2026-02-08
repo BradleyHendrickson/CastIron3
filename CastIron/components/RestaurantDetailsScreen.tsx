@@ -18,7 +18,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Restaurant } from '../types';
 import { colors } from '../constants/theme';
+import { getProfile } from '../lib/profile';
 import { fetchPlaceDetails, getPlacePhotoSource } from '../lib/restaurants';
+import { supabase } from '../lib/supabase';
 import StarRating from './StarRating';
 
 function getMapsUrl(placeId: string): string {
@@ -65,7 +67,20 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isTester, setIsTester] = useState(false);
   const lightboxFade = useRef(new Animated.Value(0)).current;
+
+  const loadProfile = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const profile = await getProfile(session.user.id);
+      setIsTester(profile?.is_tester ?? false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const loadDetails = useCallback(async (placeId: string) => {
     setLoading(true);
@@ -180,6 +195,34 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
       </View>
 
       <View style={[styles.details, { paddingTop: 24 }]}>
+
+        {isTester && restaurant.scoreBreakdown && (
+          <View style={styles.scoreBreakdown}>
+            <Text style={[styles.scoreBreakdownTitle, { marginTop: 4 }]}>
+              Score: {restaurant.score != null ? restaurant.score : '—'}
+            </Text>
+            <Text style={[styles.scoreBreakdownLine, { fontWeight: '600'}]}>
+              Breakdown
+            </Text>
+            <Text style={styles.scoreBreakdownLine}>
+              Rating: {(details?.rating ?? restaurant.rating)?.toFixed(1) ?? '—'}
+            </Text>
+            <Text style={styles.scoreBreakdownLine}>
+              Base (rating × 20): {restaurant.scoreBreakdown.base}
+            </Text>
+            {restaurant.scoreBreakdown.interactionType === 'like' && (
+              <Text style={styles.scoreBreakdownLine}>Liked: +50</Text>
+            )}
+            {restaurant.scoreBreakdown.interactionType === 'unlike' && (
+              <Text style={styles.scoreBreakdownLine}>Unliked: −30</Text>
+            )}
+            {restaurant.scoreBreakdown.timeSpent > 0 && restaurant.scoreBreakdown.interactionType !== 'unlike' && (
+              <Text style={styles.scoreBreakdownLine}>
+                View time: +{restaurant.scoreBreakdown.timeSpent}
+              </Text>
+            )}
+          </View>
+        )}
         {(details?.userRatingCount ?? restaurant.userRatingCount) != null && (
           <Text style={styles.reviewCount}>
             {(details?.userRatingCount ?? restaurant.userRatingCount)} reviews
@@ -440,6 +483,28 @@ const styles = StyleSheet.create({
   details: {
     paddingHorizontal: 24,
     paddingBottom: 24,
+  },
+  score: {
+    fontSize: 14,
+    color: colors.textMuted,
+    marginBottom: 8,
+  },
+  scoreBreakdown: {
+    backgroundColor: colors.surfaceSecondary,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  scoreBreakdownTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 10,
+  },
+  scoreBreakdownLine: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: 4,
   },
   reviewCount: {
     fontSize: 16,
