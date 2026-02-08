@@ -14,13 +14,28 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Restaurant } from '../types';
 import { colors } from '../constants/theme';
 import { fetchPlaceDetails, getPlacePhotoSource } from '../lib/restaurants';
+import StarRating from './StarRating';
 
 function getMapsUrl(placeId: string): string {
   return `https://www.google.com/maps/search/?api=1&query_place_id=${placeId}`;
+}
+
+function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m away`;
+  return `${(meters / 1000).toFixed(1)} km away`;
+}
+
+function formatPriceLevel(priceLevel?: string): string {
+  if (!priceLevel) return '';
+  if (priceLevel === 'PRICE_LEVEL_INEXPENSIVE') return '$';
+  if (priceLevel === 'PRICE_LEVEL_MODERATE') return '$$';
+  if (priceLevel === 'PRICE_LEVEL_EXPENSIVE') return '$$$';
+  return '';
 }
 
 const GRID_COLUMNS = 3;
@@ -41,6 +56,11 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
     userRatingCount: number;
     cuisine: string;
     photos: string[];
+    priceLevel?: string;
+    nationalPhoneNumber?: string;
+    websiteUri?: string;
+    openNow?: boolean;
+    hours?: string[];
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +79,11 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
         userRatingCount: data.userRatingCount,
         cuisine: data.cuisine,
         photos: data.photos,
+        priceLevel: data.priceLevel,
+        nationalPhoneNumber: data.nationalPhoneNumber,
+        websiteUri: data.websiteUri,
+        openNow: data.openNow,
+        hours: data.hours,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load details');
@@ -109,30 +134,88 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
   const photos = details?.photos ?? restaurant.photos ?? [];
   const contentWidth = width - HORIZONTAL_PADDING * 2;
   const cellSize = (contentWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+  const heroPhotoId = photos[0];
+  const rating = details?.rating ?? restaurant.rating ?? 0;
 
   return (
     <>
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 24 }]}
+      contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.details}>
-        <Text style={styles.name}>{details?.name ?? restaurant.name}</Text>
-        <Text style={styles.cuisine}>{cuisine}</Text>
-        <View style={styles.ratingRow}>
-          <View style={styles.ratingBadge}>
-            <Text style={styles.rating}>
-              ★ {(details?.rating ?? restaurant.rating)?.toFixed(1) ?? '—'}
-            </Text>
+      {/* Hero image */}
+      <View style={[styles.heroContainer, { height: height * 0.35 }]}>
+        {heroPhotoId ? (
+          <Image
+            source={getPlacePhotoSource(restaurant.id, heroPhotoId, 1200)}
+            style={[styles.heroImage, { width, height: height * 0.35 }]}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.heroPlaceholder, { width, height: height * 0.35 }]} />
+        )}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.6)']}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View style={[styles.heroInfo, { paddingTop: insets.top + 24 }]}>
+          <Text style={styles.heroName}>{details?.name ?? restaurant.name}</Text>
+          <View style={styles.heroMetaRow}>
+            <StarRating rating={rating} size={24} color="#fff" />
+            {formatPriceLevel(details?.priceLevel ?? restaurant.priceLevel) ? (
+              <Text style={styles.heroPrice}>{formatPriceLevel(details?.priceLevel ?? restaurant.priceLevel)}</Text>
+            ) : null}
+            {(details?.openNow ?? restaurant.openNow) != null && (
+              <Text style={[styles.heroOpenStatus, (details?.openNow ?? restaurant.openNow) ? styles.heroOpenNow : styles.heroClosed]}>
+                {(details?.openNow ?? restaurant.openNow) ? 'Open now' : 'Closed'}
+              </Text>
+            )}
           </View>
-          {(details?.userRatingCount ?? restaurant.userRatingCount) != null && (
-            <Text style={styles.reviewCount}>
-              ({(details?.userRatingCount ?? restaurant.userRatingCount)} reviews)
-            </Text>
+          <Text style={styles.heroCuisine}>{cuisine}</Text>
+          {restaurant.distanceMeters != null && (
+            <Text style={styles.heroDistance}>{formatDistance(restaurant.distanceMeters)}</Text>
           )}
         </View>
+      </View>
+
+      <View style={[styles.details, { paddingTop: 24 }]}>
+        {(details?.userRatingCount ?? restaurant.userRatingCount) != null && (
+          <Text style={styles.reviewCount}>
+            {(details?.userRatingCount ?? restaurant.userRatingCount)} reviews
+          </Text>
+        )}
         <Text style={styles.address}>{details?.address ?? restaurant.address}</Text>
+
+        {details?.nationalPhoneNumber ? (
+          <TouchableOpacity
+            style={styles.contactRow}
+            onPress={() => Linking.openURL(`tel:${details.nationalPhoneNumber}`)}
+          >
+            <MaterialCommunityIcons name="phone" size={20} color={colors.accent} />
+            <Text style={styles.contactText}>{details.nationalPhoneNumber}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {details?.websiteUri ? (
+          <TouchableOpacity
+            style={styles.contactRow}
+            onPress={() => Linking.openURL(details.websiteUri!)}
+          >
+            <MaterialCommunityIcons name="web" size={20} color={colors.accent} />
+            <Text style={styles.contactText}>Visit website</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {details?.hours && details.hours.length > 0 ? (
+          <View style={styles.hoursSection}>
+            <Text style={styles.hoursTitle}>Hours</Text>
+            {details.hours.map((line, i) => (
+              <Text key={i} style={styles.hoursLine}>{line}</Text>
+            ))}
+          </View>
+        ) : null}
+
         <TouchableOpacity
           style={styles.mapsButton}
           onPress={() => Linking.openURL(getMapsUrl(restaurant.id))}
@@ -237,6 +320,70 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 48,
   },
+  heroContainer: {
+    width: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  heroImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  heroPlaceholder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  heroInfo: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  heroName: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  heroCuisine: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.95)',
+    marginTop: 4,
+  },
+  heroDistance: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 4,
+  },
+  heroMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  heroPrice: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '600',
+  },
+  heroOpenStatus: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  heroOpenNow: {
+    color: '#4ade80',
+  },
+  heroClosed: {
+    color: 'rgba(255,255,255,0.7)',
+  },
   empty: {
     flex: 1,
     backgroundColor: colors.background,
@@ -294,42 +441,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
-  name: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  cuisine: {
-    fontSize: 18,
-    color: colors.textMuted,
-    marginBottom: 16,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  ratingBadge: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  rating: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.accentText,
-  },
   reviewCount: {
     fontSize: 16,
     color: colors.textDim,
+    marginBottom: 12,
   },
   address: {
     fontSize: 16,
     color: colors.textMuted,
+    marginBottom: 16,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  contactText: {
+    fontSize: 16,
+    color: colors.accent,
+    flex: 1,
+  },
+  hoursSection: {
     marginBottom: 24,
+  },
+  hoursTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  hoursLine: {
+    fontSize: 15,
+    color: colors.textMuted,
+    marginBottom: 2,
   },
   mapsButton: {
     flexDirection: 'row',

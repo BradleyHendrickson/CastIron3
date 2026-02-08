@@ -14,13 +14,26 @@ export function getPlacePhotoSource(placeId: string, photoId: string, maxWidthPx
   return { uri };
 }
 
+export type FetchRestaurantsResult = {
+  restaurants: Restaurant[];
+  nextPageToken: string | null;
+};
+
 export async function fetchRestaurants(
   lat: number,
   lng: number,
-  radius = 3000
-): Promise<Restaurant[]> {
+  radius = 3000,
+  pageToken?: string | null
+): Promise<FetchRestaurantsResult> {
   const url = `${getSupabaseUrl()}/functions/v1/get-restaurants`;
   const { data: { session } } = await supabase.auth.getSession();
+
+  const body: { lat: number; lng: number; radius?: number; pageToken?: string } = {
+    lat,
+    lng,
+    radius,
+  };
+  if (pageToken && pageToken.trim()) body.pageToken = pageToken;
 
   const response = await fetch(url, {
     method: 'POST',
@@ -30,7 +43,7 @@ export async function fetchRestaurants(
         Authorization: `Bearer ${session.access_token}`,
       }),
     },
-    body: JSON.stringify({ lat, lng, radius }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -38,8 +51,8 @@ export async function fetchRestaurants(
     throw new Error((err as { error?: string }).error ?? 'Failed to fetch restaurants');
   }
 
-  const { restaurants } = await response.json();
-  return restaurants ?? [];
+  const { restaurants, nextPageToken } = await response.json();
+  return { restaurants: restaurants ?? [], nextPageToken: nextPageToken ?? null };
 }
 
 export async function recordInteraction(
@@ -87,6 +100,11 @@ export async function fetchPlaceDetails(placeId: string): Promise<{
   userRatingCount: number;
   cuisine: string;
   photos: string[];
+  nationalPhoneNumber?: string;
+  websiteUri?: string;
+  priceLevel?: string;
+  openNow?: boolean;
+  hours?: string[];
 }> {
   const url = `${getSupabaseUrl()}/functions/v1/get-place-details?placeId=${encodeURIComponent(placeId)}`;
   const { data: { session } } = await supabase.auth.getSession();

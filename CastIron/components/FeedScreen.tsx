@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
+  Image,
   Share,
   StyleSheet,
   Text,
@@ -13,18 +14,34 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { Restaurant } from '../types';
 import { colors } from '../constants/theme';
 import {
   addBookmark,
   fetchRestaurants,
   getBookmarkedPlaceIds,
+  getPlacePhotoSource,
   recordInteraction,
   removeBookmark,
 } from '../lib/restaurants';
+import StarRating from './StarRating';
 
 function getMapsUrl(placeId: string): string {
   return `https://www.google.com/maps/search/?api=1&query_place_id=${placeId}`;
+}
+
+function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m away`;
+  return `${(meters / 1000).toFixed(1)} km away`;
+}
+
+function formatPriceLevel(priceLevel?: string): string {
+  if (!priceLevel) return '';
+  if (priceLevel === 'PRICE_LEVEL_INEXPENSIVE') return '$';
+  if (priceLevel === 'PRICE_LEVEL_MODERATE') return '$$';
+  if (priceLevel === 'PRICE_LEVEL_EXPENSIVE') return '$$$';
+  return '';
 }
 
 const ICON_SIZE = 36;
@@ -130,21 +147,48 @@ function RestaurantCard({
   bookmarked: boolean;
   profileInitial: string;
 }) {
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const likeScaleAnim = useRef(new Animated.Value(1)).current;
-  const cuisine =
-    restaurant.cuisine?.replace(/_/g, ' ') ?? 'Restaurant';
+  const cuisine = restaurant.cuisine?.replace(/_/g, ' ') ?? 'Restaurant';
+  const photoId = restaurant.photos?.[0];
 
   return (
     <View style={[styles.card, { height }]}>
-      <View style={[styles.cardContent, { paddingTop: insets.top + 24 }]}>
-        <Text style={styles.restaurantName}>{restaurant.name}</Text>
-        <Text style={styles.cuisine}>{cuisine}</Text>
-        <View style={styles.ratingContainer}>
-          <Text style={styles.rating}>★ {restaurant.rating?.toFixed(1) ?? '—'}</Text>
+      {photoId ? (
+        <Image
+          source={getPlacePhotoSource(restaurant.id, photoId, 1200)}
+          style={[styles.cardImage, { width, height }]}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.cardImagePlaceholder, { width, height }]} />
+      )}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.7)']}
+        style={[styles.cardGradient, { height: height * 0.5, bottom: 0 }]}
+      />
+      <View style={[styles.cardContent, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 90 }]}>
+        <View style={styles.cardInfo}>
+          <Text style={styles.restaurantName} numberOfLines={2}>
+            {restaurant.name}
+          </Text>
+          <View style={styles.cardMetaRow}>
+            <StarRating rating={restaurant.rating ?? 0} size={22} color="#fff" />
+            {formatPriceLevel(restaurant.priceLevel) ? (
+              <Text style={styles.priceLevel}>{formatPriceLevel(restaurant.priceLevel)}</Text>
+            ) : null}
+            {restaurant.openNow != null && (
+              <Text style={[styles.openStatus, restaurant.openNow ? styles.openNow : styles.closed]}>
+                {restaurant.openNow ? 'Open now' : 'Closed'}
+              </Text>
+            )}
+          </View>
+          <Text style={styles.cuisine}>{cuisine}</Text>
+          {restaurant.distanceMeters != null && (
+            <Text style={styles.distance}>{formatDistance(restaurant.distanceMeters)}</Text>
+          )}
         </View>
-        <Text style={styles.address}>{restaurant.address}</Text>
       </View>
       <ActionBar
         onLike={onLike}
@@ -175,17 +219,29 @@ export default function FeedScreen({
 }: FeedScreenProps = {}) {
   const { height } = useWindowDimensions();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const viewStartRef = useRef<number>(Date.now());
   const currentIndexRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const restaurantsRef = useRef(restaurants);
+  const onCurrentRestaurantChangeRef = useRef(onCurrentRestaurantChange);
+  restaurantsRef.current = restaurants;
+  onCurrentRestaurantChangeRef.current = onCurrentRestaurantChange;
 
-  const loadRestaurants = useCallback(async () => {
+  const loadRestaurants = useCallback(async (pageToken?: string | null) => {
+    const isInitial = !pageToken;
+    if (isInitial) setLoading(true);
+    else {
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+    }
     try {
-      setLoading(true);
-      setError(null);
+      if (isInitial) setError(null);
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setError('Location permission is required to find nearby restaurants.');
@@ -196,17 +252,35 @@ export default function FeedScreen({
         accuracy: Location.Accuracy.Balanced,
       });
       const { latitude, longitude } = location.coords;
-      const [data, bookmarks] = await Promise.all([
-        fetchRestaurants(latitude, longitude),
-        getBookmarkedPlaceIds(),
+      const [result, bookmarks] = await Promise.all([
+        fetchRestaurants(latitude, longitude, 3000, pageToken),
+        isInitial ? getBookmarkedPlaceIds() : Promise.resolve(null),
       ]);
-      setRestaurants(data);
-      setBookmarkedIds(bookmarks);
+
+      if (isInitial) {
+        setRestaurants(result.restaurants);
+        setBookmarkedIds(bookmarks ?? new Set());
+      } else {
+        const seen = new Set(restaurantsRef.current.map((r) => r.id));
+        const added = result.restaurants.filter((r) => !seen.has(r.id));
+        setRestaurants((prev) => [...prev, ...added]);
+        if (added.length === 0) {
+          setNextPageToken(null);
+          return;
+        }
+      }
+      setNextPageToken(result.nextPageToken ?? null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load restaurants');
-      setRestaurants([]);
+      if (isInitial) {
+        setError(e instanceof Error ? e.message : 'Failed to load restaurants');
+        setRestaurants([]);
+      } else {
+        setNextPageToken(null);
+      }
     } finally {
       setLoading(false);
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
   }, []);
 
@@ -224,29 +298,35 @@ export default function FeedScreen({
 
   const recordViewEnd = useCallback(
     async (index: number, action: 'like' | 'skip' | 'unlike') => {
-      const restaurant = restaurants[index];
+      const restaurant = restaurantsRef.current[index];
       if (!restaurant) return;
       const timeSpentMs = Date.now() - viewStartRef.current;
       await recordInteraction(restaurant.id, action, timeSpentMs);
     },
-    [restaurants]
+    []
   );
 
-  const handleViewableItemsChanged = useCallback(
+  const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
       const visible = viewableItems[0];
       if (visible?.index == null) return;
       const newIndex = visible.index;
       const prevIndex = currentIndexRef.current;
+      const currentRestaurants = restaurantsRef.current;
       if (prevIndex !== newIndex) {
         recordViewEnd(prevIndex, 'skip').catch(() => {});
         currentIndexRef.current = newIndex;
         viewStartRef.current = Date.now();
       }
-      onCurrentRestaurantChange?.(restaurants[newIndex] ?? null);
-    },
-    [recordViewEnd, onCurrentRestaurantChange, restaurants]
-  );
+      onCurrentRestaurantChangeRef.current?.(currentRestaurants[newIndex] ?? null);
+    }
+  ).current;
+
+  const handleEndReached = useCallback(() => {
+    if (nextPageToken && !loadingMoreRef.current && !loading) {
+      loadRestaurants(nextPageToken);
+    }
+  }, [nextPageToken, loading, loadRestaurants]);
 
   const handleShare = useCallback((restaurant: Restaurant) => {
     const url = getMapsUrl(restaurant.id);
@@ -366,6 +446,8 @@ export default function FeedScreen({
         getItemLayout={getItemLayout}
         onViewableItemsChanged={handleViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={5}
         pagingEnabled
         snapToInterval={height}
         snapToAlignment="start"
@@ -373,6 +455,13 @@ export default function FeedScreen({
         disableIntervalMomentum
         showsVerticalScrollIndicator={false}
         bounces={false}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadingMore}>
+              <ActivityIndicator size="small" color={colors.accent} />
+            </View>
+          ) : null
+        }
       />
     </View>
   );
@@ -407,43 +496,72 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
     backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceSecondary,
+  },
+  cardImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  cardImagePlaceholder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  cardGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
   },
   cardContent: {
-    padding: 24,
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingLeft: 24,
+    paddingRight: 72,
+    paddingBottom: 24,
+  },
+  cardInfo: {
+    gap: 6,
+  },
+  cardMetaRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  priceLevel: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '600',
+  },
+  openStatus: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  openNow: {
+    color: '#4ade80',
+  },
+  closed: {
+    color: 'rgba(255,255,255,0.7)',
   },
   restaurantName: {
     fontSize: 28,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
-    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   cuisine: {
     fontSize: 18,
-    color: colors.textMuted,
-    marginBottom: 16,
+    color: 'rgba(255,255,255,0.9)',
   },
-  ratingContainer: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 16,
-  },
-  rating: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.accentText,
-  },
-  address: {
+  distance: {
     fontSize: 16,
-    color: colors.textDim,
+    color: 'rgba(255,255,255,0.85)',
   },
   actionBar: {
     position: 'absolute',
@@ -471,5 +589,10 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 14,
     color: colors.textMuted,
+  },
+  loadingMore: {
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

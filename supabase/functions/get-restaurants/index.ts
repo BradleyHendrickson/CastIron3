@@ -11,6 +11,7 @@ interface RequestBody {
   lat: number;
   lng: number;
   radius?: number;
+  pageToken?: string;
 }
 
 interface GooglePhoto {
@@ -26,6 +27,28 @@ interface GooglePlace {
   primaryType?: string;
   types?: string[];
   photos?: GooglePhoto[];
+  location?: { latitude?: number; longitude?: number };
+  priceLevel?: string;
+  currentOpeningHours?: { openNow?: boolean };
+}
+
+function haversineDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 Deno.serve(async (req) => {
@@ -43,7 +66,7 @@ Deno.serve(async (req) => {
     }
 
     const body = (await req.json()) as RequestBody;
-    const { lat, lng, radius = 3000 } = body;
+    const { lat, lng, radius = 3000, pageToken } = body;
 
     if (typeof lat !== "number" || typeof lng !== "number") {
       return new Response(
@@ -70,29 +93,34 @@ Deno.serve(async (req) => {
       }
     }
 
-    const response = await fetch(
-      "https://places.googleapis.com/v1/places:searchNearby",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask":
-            "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.primaryType,places.types,places.photos",
+    const effectiveRadius = Math.min(Math.max(radius, 100), 50000);
+
+    // Use Text Search for pagination (supports pageToken) - like getNearbyRestaurantsPage
+    const requestBody: Record<string, unknown> = {
+      textQuery: "restaurants",
+      includedType: "restaurant",
+      pageSize: 20,
+      locationBias: {
+        circle: {
+          center: { latitude: lat, longitude: lng },
+          radius: effectiveRadius,
         },
-        body: JSON.stringify({
-          includedTypes: ["restaurant"],
-          maxResultCount: 20,
-          locationRestriction: {
-            circle: {
-              center: { latitude: lat, longitude: lng },
-              radius: Math.min(Math.max(radius, 100), 50000),
-            },
-          },
-          rankPreference: "POPULARITY",
-        }),
-      }
-    );
+      },
+    };
+    if (pageToken && typeof pageToken === "string" && pageToken.trim()) {
+      requestBody.pageToken = pageToken.trim();
+    }
+
+    const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask":
+          "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.primaryType,places.types,places.photos,places.location,places.priceLevel,places.currentOpeningHours,nextPageToken",
+      },
+      body: JSON.stringify(requestBody),
+    });
 
     if (!response.ok) {
       const errText = await response.text();
@@ -105,6 +133,8 @@ Deno.serve(async (req) => {
 
     const data = await response.json();
     const places: GooglePlace[] = data.places ?? [];
+    const nextPageTokenValue = data.nextPageToken;
+    const hasMore = nextPageTokenValue != null && String(nextPageTokenValue).trim() !== "";
 
     let userInteractions: { place_id: string; action: string; time_spent_ms: number }[] = [];
     if (userId) {
@@ -152,6 +182,16 @@ Deno.serve(async (req) => {
           }
         }
 
+        const placeLat = p.location?.latitude;
+        const placeLng = p.location?.longitude;
+        const distanceMeters =
+          typeof placeLat === "number" && typeof placeLng === "number"
+            ? Math.round(haversineDistanceMeters(lat, lng, placeLat, placeLng))
+            : undefined;
+
+        const priceLevel = p.priceLevel;
+        const openNow = p.currentOpeningHours?.openNow;
+
         return {
           id: placeId,
           name,
@@ -160,6 +200,9 @@ Deno.serve(async (req) => {
           address: p.formattedAddress ?? "",
           userRatingCount: p.userRatingCount ?? 0,
           photos,
+          distanceMeters,
+          priceLevel: priceLevel ?? undefined,
+          openNow: openNow ?? undefined,
           _score: score,
         };
       })
@@ -167,7 +210,10 @@ Deno.serve(async (req) => {
       .sort((a, b) => b._score - a._score)
       .map(({ _score, ...r }) => r);
 
-    return new Response(JSON.stringify({ restaurants }), {
+    return new Response(JSON.stringify({
+      restaurants,
+      nextPageToken: hasMore ? String(nextPageTokenValue) : null,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

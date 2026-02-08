@@ -18,6 +18,11 @@ interface GooglePlace {
   primaryType?: string;
   types?: string[];
   photos?: GooglePhoto[];
+  nationalPhoneNumber?: string;
+  websiteUri?: string;
+  priceLevel?: string;
+  currentOpeningHours?: { openNow?: boolean; weekdayDescriptions?: string[] };
+  regularOpeningHours?: { weekdayDescriptions?: string[] };
 }
 
 Deno.serve(async (req) => {
@@ -52,7 +57,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
         "X-Goog-FieldMask":
-          "id,displayName,formattedAddress,rating,userRatingCount,primaryType,types,photos",
+          "id,displayName,formattedAddress,rating,userRatingCount,primaryType,types,photos,nationalPhoneNumber,websiteUri,priceLevel,currentOpeningHours,regularOpeningHours",
       },
     });
 
@@ -75,6 +80,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    const hours = place.regularOpeningHours?.weekdayDescriptions ?? place.currentOpeningHours?.weekdayDescriptions ?? [];
+
     return new Response(
       JSON.stringify({
         id: place.id ?? cleanPlaceId,
@@ -87,6 +94,11 @@ Deno.serve(async (req) => {
           place.types?.find((t: string) => t.includes("restaurant"))?.replace(/_/g, " ") ??
           "Restaurant",
         photos,
+        nationalPhoneNumber: place.nationalPhoneNumber ?? undefined,
+        websiteUri: place.websiteUri ?? undefined,
+        priceLevel: place.priceLevel ?? undefined,
+        openNow: place.currentOpeningHours?.openNow ?? undefined,
+        hours,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

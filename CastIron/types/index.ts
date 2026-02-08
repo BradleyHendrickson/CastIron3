@@ -6,4 +6,7 @@ export type Restaurant = {
   address: string;
   userRatingCount?: number;
   photos?: string[];
+  distanceMeters?: number;
+  priceLevel?: string;
+  openNow?: boolean;
 };
