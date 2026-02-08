@@ -1,0 +1,17 @@
+# Supabase config - run 'supabase init' for full config
+project_id = "castiron"
+
+[api]
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[functions.get-restaurants]
+verify_jwt = false
+
+[functions.place-photo]
+verify_jwt = false
+
+[functions.get-place-details]
+verify_jwt = false

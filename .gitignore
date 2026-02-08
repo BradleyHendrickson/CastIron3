@@ -1,0 +1,22 @@
+# Local env
+.env
+.env.local
+.env*.local
+
+# Dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+dist/
+web-build/
+.metro-health-check*
+
+# Debug
+*.tsbuildinfo
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS
+.DS_Store
