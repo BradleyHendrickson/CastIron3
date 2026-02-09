@@ -12,6 +12,8 @@ interface RequestBody {
   lng: number;
   radius?: number;
   pageToken?: string;
+  /** If provided, distances are computed from this (user) location instead of the search center. */
+  userLocation?: { lat: number; lng: number };
 }
 
 interface GooglePhoto {
@@ -66,7 +68,9 @@ Deno.serve(async (req) => {
     }
 
     const body = (await req.json()) as RequestBody;
-    const { lat, lng, radius = 3000, pageToken } = body;
+    const { lat, lng, radius = 3000, pageToken, userLocation } = body;
+    const distanceFromLat = userLocation?.lat ?? lat;
+    const distanceFromLng = userLocation?.lng ?? lng;
 
     if (typeof lat !== "number" || typeof lng !== "number") {
       return new Response(
@@ -196,7 +200,7 @@ Deno.serve(async (req) => {
         const placeLng = p.location?.longitude;
         const distanceMeters =
           typeof placeLat === "number" && typeof placeLng === "number"
-            ? Math.round(haversineDistanceMeters(lat, lng, placeLat, placeLng))
+            ? Math.round(haversineDistanceMeters(distanceFromLat, distanceFromLng, placeLat, placeLng))
             : undefined;
 
         const priceLevel = p.priceLevel;

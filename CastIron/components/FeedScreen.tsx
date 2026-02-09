@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import {
@@ -32,8 +32,10 @@ function getMapsUrl(placeId: string): string {
 }
 
 function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m away`;
-  return `${(meters / 1000).toFixed(1)} km away`;
+  const feet = meters * 3.28084;
+  if (feet < 500) return `${Math.round(feet)} ft away`;
+  const miles = meters / 1609.344;
+  return `${miles.toFixed(1)} mi away`;
 }
 
 function formatPriceLevel(priceLevel?: string): string {
@@ -58,7 +60,6 @@ function ActionBar({
   likeScaleAnim,
   bookmarkScaleAnim,
   profileInitial,
-  opacity = 1,
 }: {
   onLike: () => void;
   onUnlike: () => void;
@@ -71,7 +72,6 @@ function ActionBar({
   likeScaleAnim: Animated.Value;
   bookmarkScaleAnim: Animated.Value;
   profileInitial: string;
-  opacity?: number | Animated.Value;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -117,13 +117,8 @@ function ActionBar({
     }
   }, [bookmarked, onBookmark, onUnbookmark, bookmarkScaleAnim]);
 
-  const BarWrapper = opacity !== undefined && typeof opacity !== 'number' ? Animated.View : View;
-  const barStyle = opacity !== undefined
-    ? [styles.actionBar, { bottom: insets.bottom + 56 }, { opacity }]
-    : [styles.actionBar, { bottom: insets.bottom + 56 }];
-
   return (
-    <BarWrapper style={barStyle}>
+    <View style={[styles.actionBar, { bottom: insets.bottom + 56 }]}>
       <TouchableOpacity style={styles.actionButton} onPress={handleToggleLike}>
         <Animated.View style={{ transform: [{ scale: likeScaleAnim }] }}>
           <MaterialCommunityIcons
@@ -152,11 +147,9 @@ function ActionBar({
       <TouchableOpacity style={styles.profileCircle} onPress={onProfile}>
         <Text style={styles.profileCircleText}>{profileInitial}</Text>
       </TouchableOpacity>
-    </BarWrapper>
+    </View>
   );
 }
-
-const SNAP_THRESHOLD = 0;
 
 function RestaurantCard({
   restaurant,
@@ -169,9 +162,6 @@ function RestaurantCard({
   liked,
   bookmarked,
   profileInitial,
-  scrollY,
-  itemHeight,
-  index,
 }: {
   restaurant: Restaurant;
   onLike: () => void;
@@ -183,32 +173,13 @@ function RestaurantCard({
   liked: boolean;
   bookmarked: boolean;
   profileInitial: string;
-  scrollY: number;
-  itemHeight: number;
-  index: number;
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const likeScaleAnim = useRef(new Animated.Value(1)).current;
   const bookmarkScaleAnim = useRef(new Animated.Value(1)).current;
-  const contentOpacity = useRef(new Animated.Value(1)).current;
   const cuisine = restaurant.cuisine?.replace(/_/g, ' ') ?? 'Restaurant';
   const photoId = restaurant.photos?.[0];
-  const snapOffset = itemHeight * index;
-
-  useLayoutEffect(() => {
-    const dist = Math.abs(scrollY - snapOffset);
-    const isCentered = dist <= SNAP_THRESHOLD;
-    if (isCentered) {
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 140,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      contentOpacity.setValue(0.5);
-    }
-  }, [scrollY, snapOffset, contentOpacity]);
 
   return (
     <View style={[styles.card, { height }]}>
@@ -226,7 +197,7 @@ function RestaurantCard({
         style={[styles.cardGradient, { height: height * 0.5, bottom: 0 }]}
       />
       <View style={[styles.cardContent, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 90 }]}>
-        <Animated.View style={[styles.cardInfo, { opacity: contentOpacity }]}>
+        <View style={styles.cardInfo}>
           <Text style={styles.restaurantName} numberOfLines={2}>
             {restaurant.name}
           </Text>
@@ -248,7 +219,7 @@ function RestaurantCard({
           <Text style={styles.score}>
             Score: {restaurant.score != null ? restaurant.score : '—'}
           </Text>
-        </Animated.View>
+        </View>
       </View>
       <ActionBar
         onLike={onLike}
@@ -262,7 +233,6 @@ function RestaurantCard({
         likeScaleAnim={likeScaleAnim}
         bookmarkScaleAnim={bookmarkScaleAnim}
         profileInitial={profileInitial}
-        opacity={contentOpacity}
       />
     </View>
   );
@@ -272,18 +242,19 @@ type FeedScreenProps = {
   onProfilePress?: () => void;
   onCurrentRestaurantChange?: (restaurant: Restaurant | null) => void;
   profileInitial?: string;
+  searchLocation?: { latitude: number; longitude: number } | null;
 };
 
 export default function FeedScreen({
   onProfilePress,
   onCurrentRestaurantChange,
   profileInitial = '?',
+  searchLocation,
 }: FeedScreenProps = {}) {
   const { height } = useWindowDimensions();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scrollY, setScrollY] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -305,18 +276,32 @@ export default function FeedScreen({
     }
     try {
       if (isInitial) setError(null);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setError('Location permission is required to find nearby restaurants.');
-        setRestaurants([]);
-        return;
+      let latitude: number;
+      let longitude: number;
+      let userLocation: { latitude: number; longitude: number } | null = null;
+      if (searchLocation) {
+        ({ latitude, longitude } = searchLocation);
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          userLocation = loc.coords;
+        }
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setError('Location permission is required to find nearby restaurants.');
+          setRestaurants([]);
+          return;
+        }
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        ({ latitude, longitude } = location.coords);
       }
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const { latitude, longitude } = location.coords;
       const [result, bookmarks] = await Promise.all([
-        fetchRestaurants(latitude, longitude, 3000, pageToken),
+        fetchRestaurants(latitude, longitude, 3000, pageToken, userLocation),
         isInitial ? getBookmarkedPlaceIds() : Promise.resolve(null),
       ]);
 
@@ -345,7 +330,7 @@ export default function FeedScreen({
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, []);
+  }, [searchLocation]);
 
   useEffect(() => {
     loadRestaurants();
@@ -453,12 +438,9 @@ export default function FeedScreen({
         liked={likedIds.has(item.id)}
         bookmarked={bookmarkedIds.has(item.id)}
         profileInitial={profileInitial}
-        scrollY={scrollY}
-        itemHeight={height}
-        index={index}
       />
     ),
-    [handleLike, handleUnlike, handleBookmark, handleUnbookmark, handleShare, onProfilePress, likedIds, bookmarkedIds, profileInitial, scrollY, height]
+    [handleLike, handleUnlike, handleBookmark, handleUnbookmark, handleShare, onProfilePress, likedIds, bookmarkedIds, profileInitial]
   );
 
   const getItemLayout = useCallback(
@@ -514,8 +496,6 @@ export default function FeedScreen({
         viewabilityConfig={viewabilityConfig}
         onEndReached={handleEndReached}
         onEndReachedThreshold={5}
-        onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
-        scrollEventThrottle={1}
         pagingEnabled
         snapToInterval={height}
         snapToAlignment="start"

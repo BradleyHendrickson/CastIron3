@@ -27,8 +27,12 @@ function getMapsUrl(placeId: string): string {
 }
 
 function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m away`;
-  return `${(meters / 1000).toFixed(1)} km away`;
+  const feet = meters * 3.28084;
+  if (feet >= 500) {
+    const miles = meters / 1609.344;
+    return `${miles.toFixed(1)} mi away`;
+  }
+  return `${Math.round(feet)} ft away`;
 }
 
 function formatPriceLevel(priceLevel?: string): string {

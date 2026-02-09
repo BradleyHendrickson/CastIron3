@@ -23,17 +23,27 @@ export async function fetchRestaurants(
   lat: number,
   lng: number,
   radius = 3000,
-  pageToken?: string | null
+  pageToken?: string | null,
+  userLocation?: { latitude: number; longitude: number } | null
 ): Promise<FetchRestaurantsResult> {
   const url = `${getSupabaseUrl()}/functions/v1/get-restaurants`;
   const { data: { session } } = await supabase.auth.getSession();
 
-  const body: { lat: number; lng: number; radius?: number; pageToken?: string } = {
+  const body: {
+    lat: number;
+    lng: number;
+    radius?: number;
+    pageToken?: string;
+    userLocation?: { lat: number; lng: number };
+  } = {
     lat,
     lng,
     radius,
   };
   if (pageToken && pageToken.trim()) body.pageToken = pageToken;
+  if (userLocation) {
+    body.userLocation = { lat: userLocation.latitude, lng: userLocation.longitude };
+  }
 
   const response = await fetch(url, {
     method: 'POST',

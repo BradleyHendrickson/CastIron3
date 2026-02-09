@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -13,9 +13,11 @@ import {
   View,
 } from 'react-native';
 import { triggerSelectionHaptic } from '../lib/haptics';
+import { getSearchLocation, type SearchLocation } from '../lib/searchLocation';
 import { Session } from '@supabase/supabase-js';
 import type { Restaurant } from '../types';
 import FeedScreen from './FeedScreen';
+import MapScreen from './MapScreen';
 import ProfileScreen from './ProfileScreen';
 import RestaurantDetailsScreen from './RestaurantDetailsScreen';
 
@@ -36,9 +38,19 @@ type Props = {
 export default function MainApp({ session, onSignOut }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const currentPageRef = useRef(0);
+  const currentPageRef = useRef(1);
+  const scrollViewRef = useRef<ScrollView>(null);
   const [currentRestaurant, setCurrentRestaurant] = useState<Restaurant | null>(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [searchLocation, setSearchLocation] = useState<SearchLocation | null>(null);
+
+  useEffect(() => {
+    getSearchLocation().then(setSearchLocation);
+  }, []);
+
+  useEffect(() => {
+    scrollViewRef.current?.scrollTo({ x: width, y: 0, animated: false });
+  }, [width]);
 
   const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = e.nativeEvent.contentOffset.x;
@@ -54,20 +66,33 @@ export default function MainApp({ session, onSignOut }: Props) {
   return (
     <>
       <ScrollView
+        ref={scrollViewRef}
         horizontal
         pagingEnabled
         decelerationRate={0.95}
         showsHorizontalScrollIndicator={false}
         bounces={false}
         onScrollEndDrag={handleScrollEnd}
+        onMomentumScrollEnd={handleScrollEnd}
         style={styles.pager}
         contentContainerStyle={styles.pagerContent}
       >
+        <View style={[styles.page, { width }]}>
+          <MapScreen
+            searchLocation={searchLocation}
+            onSearchLocationChange={setSearchLocation}
+            onBack={() => {
+              currentPageRef.current = 1;
+              scrollViewRef.current?.scrollTo({ x: width, y: 0, animated: true });
+            }}
+          />
+        </View>
         <View style={[styles.page, { width }]}>
           <FeedScreen
             onProfilePress={() => setProfileModalVisible(true)}
             onCurrentRestaurantChange={setCurrentRestaurant}
             profileInitial={getProfileInitial(session.user)}
+            searchLocation={searchLocation}
           />
         </View>
         <View style={[styles.page, { width }]}>
