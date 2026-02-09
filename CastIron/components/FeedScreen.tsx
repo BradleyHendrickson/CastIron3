@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import {
@@ -58,6 +58,7 @@ function ActionBar({
   likeScaleAnim,
   bookmarkScaleAnim,
   profileInitial,
+  opacity = 1,
 }: {
   onLike: () => void;
   onUnlike: () => void;
@@ -70,6 +71,7 @@ function ActionBar({
   likeScaleAnim: Animated.Value;
   bookmarkScaleAnim: Animated.Value;
   profileInitial: string;
+  opacity?: number | Animated.Value;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -115,8 +117,13 @@ function ActionBar({
     }
   }, [bookmarked, onBookmark, onUnbookmark, bookmarkScaleAnim]);
 
+  const BarWrapper = opacity !== undefined && typeof opacity !== 'number' ? Animated.View : View;
+  const barStyle = opacity !== undefined
+    ? [styles.actionBar, { bottom: insets.bottom + 56 }, { opacity }]
+    : [styles.actionBar, { bottom: insets.bottom + 56 }];
+
   return (
-    <View style={[styles.actionBar, { bottom: insets.bottom + 56 }]}>
+    <BarWrapper style={barStyle}>
       <TouchableOpacity style={styles.actionButton} onPress={handleToggleLike}>
         <Animated.View style={{ transform: [{ scale: likeScaleAnim }] }}>
           <MaterialCommunityIcons
@@ -145,9 +152,11 @@ function ActionBar({
       <TouchableOpacity style={styles.profileCircle} onPress={onProfile}>
         <Text style={styles.profileCircleText}>{profileInitial}</Text>
       </TouchableOpacity>
-    </View>
+    </BarWrapper>
   );
 }
+
+const SNAP_THRESHOLD = 0;
 
 function RestaurantCard({
   restaurant,
@@ -160,6 +169,9 @@ function RestaurantCard({
   liked,
   bookmarked,
   profileInitial,
+  scrollY,
+  itemHeight,
+  index,
 }: {
   restaurant: Restaurant;
   onLike: () => void;
@@ -171,13 +183,32 @@ function RestaurantCard({
   liked: boolean;
   bookmarked: boolean;
   profileInitial: string;
+  scrollY: number;
+  itemHeight: number;
+  index: number;
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const likeScaleAnim = useRef(new Animated.Value(1)).current;
   const bookmarkScaleAnim = useRef(new Animated.Value(1)).current;
+  const contentOpacity = useRef(new Animated.Value(1)).current;
   const cuisine = restaurant.cuisine?.replace(/_/g, ' ') ?? 'Restaurant';
   const photoId = restaurant.photos?.[0];
+  const snapOffset = itemHeight * index;
+
+  useLayoutEffect(() => {
+    const dist = Math.abs(scrollY - snapOffset);
+    const isCentered = dist <= SNAP_THRESHOLD;
+    if (isCentered) {
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 140,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      contentOpacity.setValue(0.5);
+    }
+  }, [scrollY, snapOffset, contentOpacity]);
 
   return (
     <View style={[styles.card, { height }]}>
@@ -195,7 +226,7 @@ function RestaurantCard({
         style={[styles.cardGradient, { height: height * 0.5, bottom: 0 }]}
       />
       <View style={[styles.cardContent, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 90 }]}>
-        <View style={styles.cardInfo}>
+        <Animated.View style={[styles.cardInfo, { opacity: contentOpacity }]}>
           <Text style={styles.restaurantName} numberOfLines={2}>
             {restaurant.name}
           </Text>
@@ -217,7 +248,7 @@ function RestaurantCard({
           <Text style={styles.score}>
             Score: {restaurant.score != null ? restaurant.score : '—'}
           </Text>
-        </View>
+        </Animated.View>
       </View>
       <ActionBar
         onLike={onLike}
@@ -231,6 +262,7 @@ function RestaurantCard({
         likeScaleAnim={likeScaleAnim}
         bookmarkScaleAnim={bookmarkScaleAnim}
         profileInitial={profileInitial}
+        opacity={contentOpacity}
       />
     </View>
   );
@@ -251,6 +283,7 @@ export default function FeedScreen({
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scrollY, setScrollY] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -420,9 +453,12 @@ export default function FeedScreen({
         liked={likedIds.has(item.id)}
         bookmarked={bookmarkedIds.has(item.id)}
         profileInitial={profileInitial}
+        scrollY={scrollY}
+        itemHeight={height}
+        index={index}
       />
     ),
-    [handleLike, handleUnlike, handleBookmark, handleUnbookmark, handleShare, onProfilePress, likedIds, bookmarkedIds, profileInitial]
+    [handleLike, handleUnlike, handleBookmark, handleUnbookmark, handleShare, onProfilePress, likedIds, bookmarkedIds, profileInitial, scrollY, height]
   );
 
   const getItemLayout = useCallback(
@@ -478,6 +514,8 @@ export default function FeedScreen({
         viewabilityConfig={viewabilityConfig}
         onEndReached={handleEndReached}
         onEndReachedThreshold={5}
+        onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+        scrollEventThrottle={1}
         pagingEnabled
         snapToInterval={height}
         snapToAlignment="start"

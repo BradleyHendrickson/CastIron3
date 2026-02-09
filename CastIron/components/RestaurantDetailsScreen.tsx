@@ -7,7 +7,6 @@ import {
   Image,
   Linking,
   Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -154,7 +153,7 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
 
   return (
     <>
-    <ScrollView
+    <Animated.ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -304,7 +303,7 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
           </View>
         </View>
       )}
-    </ScrollView>
+    </Animated.ScrollView>
 
     <Modal
       visible={lightboxIndex != null}
