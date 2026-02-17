@@ -38,7 +38,7 @@ type Props = {
 export default function MainApp({ session, onSignOut }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const currentPageRef = useRef(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentRestaurant, setCurrentRestaurant] = useState<Restaurant | null>(null);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
@@ -52,11 +52,11 @@ export default function MainApp({ session, onSignOut }: Props) {
     scrollViewRef.current?.scrollTo({ x: width, y: 0, animated: false });
   }, [width]);
 
-  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = e.nativeEvent.contentOffset.x;
     const newPage = Math.round(offsetX / width);
-    if (newPage !== currentPageRef.current) {
-      currentPageRef.current = newPage;
+    if (newPage !== currentPage) {
+      setCurrentPage(newPage);
       if (Platform.OS !== 'web') {
         triggerSelectionHaptic();
       }
@@ -72,8 +72,10 @@ export default function MainApp({ session, onSignOut }: Props) {
         decelerationRate={0.95}
         showsHorizontalScrollIndicator={false}
         bounces={false}
-        onScrollEndDrag={handleScrollEnd}
-        onMomentumScrollEnd={handleScrollEnd}
+        onScroll={handleScroll}
+        onScrollEndDrag={handleScroll}
+        onMomentumScrollEnd={handleScroll}
+        scrollEventThrottle={16}
         style={styles.pager}
         contentContainerStyle={styles.pagerContent}
       >
@@ -82,7 +84,7 @@ export default function MainApp({ session, onSignOut }: Props) {
             searchLocation={searchLocation}
             onSearchLocationChange={setSearchLocation}
             onBack={() => {
-              currentPageRef.current = 1;
+              setCurrentPage(1);
               scrollViewRef.current?.scrollTo({ x: width, y: 0, animated: true });
             }}
           />
@@ -96,7 +98,10 @@ export default function MainApp({ session, onSignOut }: Props) {
           />
         </View>
         <View style={[styles.page, { width }]}>
-          <RestaurantDetailsScreen restaurant={currentRestaurant} />
+          <RestaurantDetailsScreen
+            restaurant={currentRestaurant}
+            isVisible={currentPage === 2}
+          />
         </View>
       </ScrollView>
       <Modal

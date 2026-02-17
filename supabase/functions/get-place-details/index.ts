@@ -72,11 +72,11 @@ Deno.serve(async (req) => {
 
     const place = (await response.json()) as GooglePlace;
     const photos: string[] = [];
-    for (const photo of place.photos ?? []) {
-      const name = photo.name;
-      if (name?.startsWith("places/") && name.includes("/photos/")) {
-        const photoId = name.split("/photos/")[1];
-        if (photoId) photos.push(photoId);
+    const rawPhotos = place.photos ?? [];
+    for (let i = 0; i < Math.min(6, rawPhotos.length); i++) {
+      const name = rawPhotos[i].name;
+      if (name && typeof name === "string") {
+        photos.push(name);
       }
     }
 

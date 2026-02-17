@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
         };
 
         const photos: string[] = [];
-        for (const photo of p.photos ?? []) {
+        for (const photo of (p.photos ?? []).slice(0, 1)) {
           const name = photo.name;
           if (name?.startsWith("places/") && name.includes("/photos/")) {
             const photoId = name.split("/photos/")[1];

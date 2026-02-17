@@ -49,9 +49,10 @@ const HORIZONTAL_PADDING = 24;
 
 type Props = {
   restaurant: Restaurant | null;
+  isVisible?: boolean;
 };
 
-export default function RestaurantDetailsScreen({ restaurant }: Props) {
+export default function RestaurantDetailsScreen({ restaurant, isVisible = false }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [details, setDetails] = useState<{
@@ -85,11 +86,16 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
     loadProfile();
   }, [loadProfile]);
 
+  const restaurantIdRef = useRef<string | null>(null);
+  restaurantIdRef.current = restaurant?.id ?? null;
+
   const loadDetails = useCallback(async (placeId: string) => {
+    setDetails(null);
     setLoading(true);
     setError(null);
     try {
       const data = await fetchPlaceDetails(placeId);
+      if (restaurantIdRef.current !== placeId) return;
       setDetails({
         name: data.name,
         address: data.address,
@@ -104,21 +110,23 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
         hours: data.hours,
       });
     } catch (e) {
+      if (restaurantIdRef.current !== placeId) return;
       setError(e instanceof Error ? e.message : 'Failed to load details');
       setDetails(null);
     } finally {
+      if (restaurantIdRef.current !== placeId) return;
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (restaurant?.id) {
+    if (isVisible && restaurant?.id) {
       loadDetails(restaurant.id);
-    } else {
+    } else if (!restaurant?.id) {
       setDetails(null);
       setError(null);
     }
-  }, [restaurant?.id, loadDetails]);
+  }, [isVisible, restaurant?.id, loadDetails]);
 
   const openLightbox = useCallback((index: number) => {
     setLightboxIndex(index);
@@ -149,10 +157,10 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
   }
 
   const cuisine = details?.cuisine ?? restaurant.cuisine?.replace(/_/g, ' ') ?? 'Restaurant';
-  const photos = details?.photos ?? restaurant.photos ?? [];
+  const gridPhotos = details?.photos ?? [];
+  const heroPhotoId = restaurant.photos?.[0] ?? details?.photos?.[0];
   const contentWidth = width - HORIZONTAL_PADDING * 2;
   const cellSize = (contentWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
-  const heroPhotoId = photos[0];
   const rating = details?.rating ?? restaurant.rating ?? 0;
 
   return (
@@ -271,7 +279,7 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {loading || (restaurant && !details && !error) ? (
         <View style={styles.photosSection}>
           <ActivityIndicator size="small" color={colors.accent} />
           <Text style={styles.loadingPhotos}>Loading photos...</Text>
@@ -280,11 +288,11 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
         <View style={styles.photosSection}>
           <Text style={styles.photosError}>{error}</Text>
         </View>
-      ) : photos.length > 0 ? (
+      ) : gridPhotos.length > 0 ? (
         <View style={styles.photosSection}>
           <Text style={styles.photosSectionTitle}>Photos</Text>
           <View style={styles.photoGrid}>
-            {photos.map((photoId, index) => (
+            {gridPhotos.map((photoId, index) => (
               <TouchableOpacity
                 key={photoId}
                 activeOpacity={1}
@@ -317,15 +325,15 @@ export default function RestaurantDetailsScreen({ restaurant }: Props) {
     >
       <View style={styles.lightboxOverlay}>
         <Animated.View style={[styles.lightboxContent, { opacity: lightboxFade }]}>
-          {lightboxIndex != null && photos.length > 0 ? (
+          {lightboxIndex != null && gridPhotos.length > 0 ? (
             <FlatList
-              data={photos}
+              data={gridPhotos}
               horizontal
               pagingEnabled
               decelerationRate={0.9}
               showsHorizontalScrollIndicator={false}
               keyExtractor={(id) => id}
-              initialScrollIndex={Math.min(lightboxIndex, photos.length - 1)}
+              initialScrollIndex={Math.min(lightboxIndex, gridPhotos.length - 1)}
               getItemLayout={(_, index) => ({
                 length: width,
                 offset: width * index,
@@ -370,11 +378,13 @@ const styles = StyleSheet.create({
     width: '100%',
     position: 'relative',
     overflow: 'hidden',
+    backgroundColor: colors.surfaceSecondary,
   },
   heroImage: {
     position: 'absolute',
     top: 0,
     left: 0,
+    backgroundColor: colors.surfaceSecondary,
   },
   heroPlaceholder: {
     position: 'absolute',
@@ -395,9 +405,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginBottom: 8,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadow: '0px 1px 4px rgba(0,0,0,0.8)',
   },
   heroCuisine: {
     fontSize: 18,
@@ -462,6 +470,7 @@ const styles = StyleSheet.create({
   photoCell: {
     backgroundColor: colors.surfaceSecondary,
     borderRadius: 8,
+    overflow: 'hidden',
   },
   photoPlaceholder: {
     backgroundColor: colors.surfaceSecondary,

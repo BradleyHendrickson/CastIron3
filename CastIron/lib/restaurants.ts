@@ -3,13 +3,17 @@ import { supabase } from './supabase';
 
 const getSupabaseUrl = () => process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 
-export function getPlacePhotoUrl(placeId: string, photoId: string, maxWidthPx = 800): string {
+export function getPlacePhotoUrl(placeId: string, photoIdOrName: string, maxWidthPx = 800): string {
   const base = getSupabaseUrl();
-  return `${base}/functions/v1/place-photo?placeId=${encodeURIComponent(placeId)}&photoId=${encodeURIComponent(photoId)}&maxWidthPx=${maxWidthPx}`;
+  const isFullName = photoIdOrName.startsWith('places/') && photoIdOrName.includes('/photos/');
+  if (isFullName) {
+    return `${base}/functions/v1/place-photo?photoName=${encodeURIComponent(photoIdOrName)}&maxWidthPx=${maxWidthPx}`;
+  }
+  return `${base}/functions/v1/place-photo?placeId=${encodeURIComponent(placeId)}&photoId=${encodeURIComponent(photoIdOrName)}&maxWidthPx=${maxWidthPx}`;
 }
 
-export function getPlacePhotoSource(placeId: string, photoId: string, maxWidthPx = 800) {
-  const uri = getPlacePhotoUrl(placeId, photoId, maxWidthPx);
+export function getPlacePhotoSource(placeId: string, photoIdOrName: string, maxWidthPx = 800) {
+  const uri = getPlacePhotoUrl(placeId, photoIdOrName, maxWidthPx);
   // place-photo is deployed with verify_jwt=false so Image can load without headers
   return { uri };
 }

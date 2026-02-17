@@ -17,15 +17,19 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL(req.url);
+    const photoName = url.searchParams.get("photoName");
     const placeId = url.searchParams.get("placeId");
     const photoId = url.searchParams.get("photoId");
     const maxWidth = url.searchParams.get("maxWidthPx") ?? "800";
 
-    if (!placeId || !photoId) {
-      return new Response("placeId and photoId required", { status: 400 });
+    let mediaUrl: string;
+    if (photoName) {
+      mediaUrl = `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${maxWidth}&key=${apiKey}`;
+    } else if (placeId && photoId) {
+      mediaUrl = `https://places.googleapis.com/v1/places/${placeId}/photos/${photoId}/media?maxWidthPx=${maxWidth}&key=${apiKey}`;
+    } else {
+      return new Response("photoName or (placeId and photoId) required", { status: 400 });
     }
-
-    const mediaUrl = `https://places.googleapis.com/v1/places/${placeId}/photos/${photoId}/media?maxWidthPx=${maxWidth}&key=${apiKey}`;
     const res = await fetch(mediaUrl, { redirect: "follow" });
 
     if (!res.ok) {
